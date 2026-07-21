@@ -13,7 +13,12 @@ class WebSocketService {
     if (this.isConnecting) return
     this.isConnecting = true
 
-    const wsUrl = `${import.meta.env.VITE_WS_BASE_URL}/ws/${roomCode}/${playerId}`
+    let baseUrl = import.meta.env.VITE_WS_BASE_URL
+    // Auto-detect protocol: use wss:// when page is served over HTTPS
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      baseUrl = baseUrl.replace(/^ws:/, 'wss:')
+    }
+    const wsUrl = `${baseUrl}/ws/${roomCode}/${playerId}`
     console.log(`[WS] Connecting to ${wsUrl}`)
 
     try {
