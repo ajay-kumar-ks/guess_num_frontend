@@ -1,14 +1,22 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { LogIn, User, Key, Loader2, AlertCircle } from 'lucide-react'
 
 export default function JoinRoom() {
   const navigate = useNavigate()
-  const [roomCode, setRoomCode] = useState('')
+  const [searchParams] = useSearchParams()
+  const [roomCode, setRoomCode] = useState(searchParams.get('code') || '')
   const [playerName, setPlayerName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Auto-focus name field if code is already filled (e.g. from QR scan)
+  useEffect(() => {
+    if (roomCode) {
+      document.getElementById('playerName')?.focus()
+    }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

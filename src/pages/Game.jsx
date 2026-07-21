@@ -6,7 +6,7 @@ import { getGameState } from '../services/api'
 import wsService from '../services/websocket'
 import NotesPanel from '../components/NotesPanel'
 import WinnerModal from '../components/WinnerModal'
-import { Target, Send, Clock, Wifi, WifiOff, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Target, Send, Clock, Wifi, WifiOff, Loader2, Eye, EyeOff, LogOut } from 'lucide-react'
 
 function GuessRow({ guess, position, number, isCurrentPlayer, isNew }) {
   return (
@@ -44,7 +44,7 @@ export default function Game() {
   const navigate = useNavigate()
   const toast = useToast()
   const { playerId, playerName, opponentName, currentTurn, guesses, connectionStatus, winner,
-    setWinner, addGuessResult, turnChanged, secretSubmitted } = useGame()
+    setWinner, addGuessResult, turnChanged, secretSubmitted, secretNumber: ctxSecretNumber } = useGame()
 
   const [digits, setDigits] = useState(['', '', ''])
   const [loading, setLoading] = useState(false)
@@ -56,16 +56,21 @@ export default function Game() {
   const inputRefs = [useRef(null), useRef(null), useRef(null)]
   const historyEndRef = useRef(null)
 
-  const secretNumber = location.state?.secretNumber
+  // Use location state first, fall back to context (survives back-navigation)
+  const [secretNumber, setSecretNumber] = useState(location.state?.secretNumber || ctxSecretNumber || '')
   const isMyTurn = currentTurn === playerId
 
   useEffect(() => {
     if (!secretNumber) navigate(`/secret-number/${roomCode}`, { replace: true })
   }, [])
 
+  // Sync secret number into context on mount (handles both location state and back-nav)
   useEffect(() => {
-    if (secretNumber) secretSubmitted(secretNumber)
-  }, [secretNumber])
+    if (location.state?.secretNumber) {
+      secretSubmitted(location.state.secretNumber)
+      setSecretNumber(location.state.secretNumber)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -137,6 +142,14 @@ export default function Game() {
       {/* Header */}
       <div className="card !p-4 space-y-3">
         <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all duration-200 text-xs"
+            title="Back to home"
+          >
+            <LogOut size={12} />
+            <span className="hidden sm:inline">Exit</span>
+          </button>
           <span className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs font-medium truncate max-w-[120px]">
             <Target size={12} />
             {playerName}

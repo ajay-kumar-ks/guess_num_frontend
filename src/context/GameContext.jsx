@@ -19,7 +19,7 @@ function gameReducer(state, action) {
   switch (action.type) {
     case 'SET_PLAYER':
       return {
-        ...state,
+        ...initialState,
         playerName: action.payload.name,
         playerId: action.payload.playerId,
         roomCode: action.payload.roomCode,

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
 import wsService from '../services/websocket'
-import { Copy, Check, Users, Loader2 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { Copy, Check, Users, Loader2, QrCode, Smartphone } from 'lucide-react'
 
 export default function WaitingRoom() {
   const { roomCode } = useParams()
@@ -10,6 +11,9 @@ export default function WaitingRoom() {
   const navigate = useNavigate()
   const { playerName, playerId, setPlayer, opponentJoined, gameStarted, opponentName, setConnectionStatus } = useGame()
   const [copied, setCopied] = useState(false)
+  const [showQR, setShowQR] = useState(false)
+
+  const joinUrl = `${window.location.origin}/join-room?code=${roomCode}`
 
   useEffect(() => {
     if (location.state?.playerName && location.state?.playerId) {
@@ -95,11 +99,43 @@ export default function WaitingRoom() {
           className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors mx-auto"
         >
           {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-          {copied ? 'Copied!' : 'Click to copy'}
-        </button>
-      </div>
+          {copied ? 'Copied!' : 'Click to copy'}          </button>
+        </div>
 
-      {/* Players */}
+        {/* QR Code Toggle */}
+        <div className="space-y-3">
+          <button
+            onClick={() => setShowQR(!showQR)}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl
+                       bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700
+                       hover:bg-gray-50 dark:hover:bg-gray-700
+                       text-sm font-medium text-gray-600 dark:text-gray-400
+                       transition-all duration-200"
+          >
+            <QrCode size={16} />
+            {showQR ? 'Hide QR Code' : 'Show QR Code'}
+          </button>
+
+          {showQR && (
+            <div className="animate-slide-up space-y-3">
+              <div className="flex justify-center p-4 bg-white dark:bg-gray-900 rounded-xl border-2 border-gray-100 dark:border-gray-800">
+                <QRCodeSVG
+                  value={joinUrl}
+                  size={180}
+                  level="M"
+                  includeMargin
+                  className="rounded-lg"
+                />
+              </div>
+              <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+                <Smartphone size={11} />
+                <span>Scan to join &mdash; {roomCode}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Players */}
       <div className="flex items-center justify-center gap-3 text-sm">
         <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-medium">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />

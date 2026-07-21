@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, Outlet } from 'react-router-dom'
-import { Sun, Moon, Plus, LogIn, Diamond } from 'lucide-react'
+import { Sun, Moon, Plus, LogIn, House } from 'lucide-react'
 
 export default function Layout() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -23,8 +23,8 @@ export default function Layout() {
             to="/"
             className="flex items-center gap-2 text-lg sm:text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent"
           >
-            <Diamond size={16} className="text-primary-500" />
-            Guess
+            <House size={14} className="text-primary-500" />
+            <span>Guess</span>
           </Link>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
