@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom'
-import { Target, Plus, LogIn, Hash, Repeat, Trophy } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Target, Plus, LogIn, Hash, Repeat, Trophy, Eye, Key } from 'lucide-react'
 
 const steps = [
   { icon: Plus, label: 'Create or join a room' },
@@ -9,6 +10,16 @@ const steps = [
 ]
 
 export default function Home() {
+  const navigate = useNavigate()
+  const [spectateCode, setSpectateCode] = useState('')
+
+  const handleSpectate = (e) => {
+    e.preventDefault()
+    if (spectateCode.trim()) {
+      navigate(`/spectate/${spectateCode.trim().toUpperCase()}`)
+    }
+  }
+
   return (
     <div className="text-center space-y-8">
       {/* Hero */}
@@ -55,6 +66,54 @@ export default function Home() {
           Join a Room
         </Link>
       </div>
+
+      {/* Spectate Divider */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-gray-50 dark:bg-gray-900 px-3 text-gray-400 dark:text-gray-500">or</span>
+        </div>
+      </div>
+
+      {/* Spectate */}
+      <form onSubmit={handleSpectate} className="card !p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
+            <Eye size={16} className="text-purple-600 dark:text-purple-400" />
+          </div>
+          <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+            Spectate a Game
+          </h2>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-left">
+          Enter a room code to watch a game live without playing.
+        </p>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={spectateCode}
+              onChange={(e) => setSpectateCode(e.target.value.toUpperCase())}
+              placeholder="ROOM CODE"
+              className="input-field !pl-9 !text-sm !font-bold tracking-[0.2em]"
+              maxLength={6}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!spectateCode.trim()}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 text-white text-sm font-medium
+                       hover:from-purple-700 hover:to-purple-600 disabled:opacity-40 disabled:cursor-not-allowed
+                       transition-all duration-200 shadow-lg shadow-purple-500/25 flex items-center gap-1.5"
+          >
+            <Eye size={16} />
+            Watch
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

@@ -133,6 +133,98 @@ class WebSocketService {
     this.send({ type: 'guess', guess })
   }
 
+  connectSpectate(roomCode) {
+    """Connect as a spectator (read-only, no player_id needed)."""
+    if (this.isConnecting) return
+    this.isConnecting = true
+    this._roomCode = roomCode
+    this._playerId = null
+
+    let baseUrl = import.meta.env.VITE_WS_BASE_URL
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      baseUrl = baseUrl.replace(/^ws:/, 'wss:')
+    }
+    const wsUrl = `${baseUrl}/ws/spectate/${roomCode}`
+    console.log(`[WS] Spectating ${wsUrl}`)
+
+    try {
+      this.ws = new WebSocket(wsUrl)
+    } catch (error) {
+      console.error('[WS] Connection error:', error)
+      this.isConnecting = false
+      return
+    }
+
+    this.ws.onopen = () => {
+      console.log('[WS] Spectator connected')
+      this.isConnecting = false
+      if (this.reconnectAttempts > 0) {
+        this._emit('connection_status', 'reconnected')
+      }
+      this.reconnectAttempts = 0
+      this._emit('connection_status', 'connected')
+      this._startHeartbeat()
+    }
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        console.log('[WS] Spectator received:', data)
+
+        switch (data.type) {
+          case 'spectate_joined':
+            this._emit('spectate_joined', data)
+            break
+          case 'guess_result':
+            this._emit('guess_result', data)
+            break
+          case 'turn_changed':
+            this._emit('turn_changed', data)
+            break
+          case 'winner':
+            this._emit('winner', data)
+            break
+          case 'game_started':
+            this._emit('game_started', data)
+            break
+          case 'opponent_joined':
+            this._emit('opponent_joined', data)
+            break
+          case 'error':
+            this._emit('error', data)
+            break
+          case 'heartbeat_ack':
+            break
+          default:
+            console.log('[WS] Unknown spectator event type:', data.type)
+        }
+      } catch (error) {
+        console.error('[WS] Parse error:', error)
+      }
+    }
+
+    this.ws.onclose = (event) => {
+      console.log('[WS] Spectator disconnected:', event.code, event.reason)
+      this.isConnecting = false
+      this._stopHeartbeat()
+      this._emit('connection_status', 'disconnected')
+
+      if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
+        const jitter = Math.random() * 1000
+        const totalDelay = delay + jitter
+        console.log(`[WS] Reconnecting spectator in ${Math.round(totalDelay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+        setTimeout(() => this.connectSpectate(roomCode), totalDelay)
+      }
+    }
+
+    this.ws.onerror = (error) => {
+      console.error('[WS] Spectator error:', error)
+      this.isConnecting = false
+    }
+  }
+
   sendReady() {
     this.send({ type: 'player_ready' })
   }
