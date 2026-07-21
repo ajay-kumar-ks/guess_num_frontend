@@ -33,8 +33,21 @@ export default function SecretNumber() {
       secretSubmitted(submittedSecretRef.current)
       navigate(`/game/${roomCodeRef.current}`, { state: { secretNumber: submittedSecretRef.current } })
     })
-    return () => { unsubOpponent(); unsubGameStarted() }
-  }, [])
+    // Listen for reconnection - if we're waiting and WebSocket reconnects,
+    // the room_joined event will have game_status, which means the game may have started
+    const unsubReconnected = wsService.on('connection_status', (status) => {
+      if (status === 'reconnected') {
+        // Re-fetch game state to check if game started while we were disconnected
+        getGameState(roomCodeRef.current).then(state => {
+          if (state.status === 'playing' && submittedSecretRef.current) {
+            secretSubmitted(submittedSecretRef.current)
+            navigate(`/game/${roomCodeRef.current}`, { state: { secretNumber: submittedSecretRef.current } })
+          }
+        }).catch(() => {})
+      }
+    })
+    return () => { unsubOpponent(); unsubGameStarted(); unsubReconnected() }
+  }, [navigate, opponentJoined, secretSubmitted])
 
   useEffect(() => {
     if (!waitingForOpponent || !roomCode) return

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
 import wsService from '../services/websocket'
+import { getGameState } from '../services/api'
 import { QRCodeSVG } from 'qrcode.react'
 import { Copy, Check, Users, Loader2, QrCode, Smartphone } from 'lucide-react'
 
@@ -33,7 +34,17 @@ export default function WaitingRoom() {
       if (data.opponent_name) {
         opponentJoined(data.opponent_name)
       }
-      wsService.sendReady()
+      // If the game already started (reconnection to playing game), go to the right page
+      if (data.game_status === 'playing' || data.game_status === 'finished') {
+        if (data.current_turn) gameStarted(data.current_turn)
+        // Check if we already submitted a secret - if not, go to secret page
+        navigate(`/secret-number/${roomCode}`, { replace: true })
+        return
+      }
+      // If opponent is already in the room, notify the server
+      if (data.opponent_name) {
+        wsService.sendReady()
+      }
     })
 
     const unsubOpponent = wsService.on('opponent_joined', (data) => {
@@ -56,7 +67,7 @@ export default function WaitingRoom() {
       unsubGameStarted()
       unsubConnStatus()
     }
-  }, [playerId, roomCode])
+  }, [playerId, roomCode, navigate])
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(roomCode).then(() => {

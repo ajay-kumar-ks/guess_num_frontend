@@ -3,15 +3,19 @@ class WebSocketService {
     this.ws = null
     this.listeners = new Map()
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 2000
+    this.maxReconnectAttempts = 20  // Increased for Vercel's frequent restarts
+    this.reconnectDelay = 1000
     this.heartbeatInterval = null
     this.isConnecting = false
+    this._roomCode = null
+    this._playerId = null
   }
 
   connect(roomCode, playerId) {
     if (this.isConnecting) return
     this.isConnecting = true
+    this._roomCode = roomCode
+    this._playerId = playerId
 
     let baseUrl = import.meta.env.VITE_WS_BASE_URL
     // Auto-detect protocol: use wss:// when page is served over HTTPS
@@ -32,6 +36,10 @@ class WebSocketService {
     this.ws.onopen = () => {
       console.log('[WS] Connected')
       this.isConnecting = false
+      // Emit 'reconnected' if this is a reconnection (not first connect)
+      if (this.reconnectAttempts > 0) {
+        this._emit('connection_status', 'reconnected')
+      }
       this.reconnectAttempts = 0
       this._emit('connection_status', 'connected')
       this._startHeartbeat()
@@ -86,10 +94,14 @@ class WebSocketService {
 
       if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++
+        // Exponential backoff with jitter: 1s, 2s, 4s, 8s, ... max 30s
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000)
+        const jitter = Math.random() * 1000
+        const totalDelay = delay + jitter
         console.log(
-          `[WS] Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+          `[WS] Reconnecting in ${Math.round(totalDelay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
         )
-        setTimeout(() => this.connect(roomCode, playerId), this.reconnectDelay)
+        setTimeout(() => this.connect(roomCode, playerId), totalDelay)
       }
     }
 
@@ -147,9 +159,10 @@ class WebSocketService {
 
   _startHeartbeat() {
     this._stopHeartbeat()
+    // More aggressive heartbeat (10s) to keep Vercel serverless WebSocket alive
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat()
-    }, 30000)
+    }, 10000)
   }
 
   _stopHeartbeat() {

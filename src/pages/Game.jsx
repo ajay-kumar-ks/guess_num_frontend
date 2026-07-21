@@ -72,21 +72,41 @@ export default function Game() {
     }
   }, [])
 
+  // Continuous polling to sync game state (critical for Vercel where WebSocket drops frequently)
+  const pollIntervalRef = useRef(null)
   useEffect(() => {
     let cancelled = false
-    const poll = async () => {
-      while (!cancelled) {
-        try {
-          const state = await getGameState(roomCode)
+    const doPoll = async () => {
+      if (cancelled) return
+      try {
+        const state = await getGameState(roomCode)
+        if (state.current_turn) turnChanged(state.current_turn)
+        if (state.status === 'playing') setGameReady(true)
+      } catch (err) {}
+    }
+    // Immediate poll on mount
+    doPoll()
+    // Then poll every 5 seconds as fallback for WebSocket disconnections
+    pollIntervalRef.current = setInterval(doPoll, 5000)
+    return () => {
+      cancelled = true
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+    }
+  }, [roomCode, turnChanged])
+
+  // Handle WebSocket reconnection - re-sync state immediately
+  useEffect(() => {
+    const handler = (status) => {
+      if (status === 'reconnected') {
+        getGameState(roomCode).then(state => {
           if (state.current_turn) turnChanged(state.current_turn)
-          if (state.status === 'playing') { setGameReady(true); return }
-        } catch (err) {}
-        await new Promise(r => setTimeout(r, 2000))
+          if (state.status === 'playing') setGameReady(true)
+        }).catch(() => {})
       }
     }
-    poll()
-    return () => { cancelled = true }
-  }, [roomCode])
+    const unsub = wsService.on('connection_status', handler)
+    return () => { unsub() }
+  }, [roomCode, turnChanged])
 
   const guessesRef = useRef(guesses)
   guessesRef.current = guesses
