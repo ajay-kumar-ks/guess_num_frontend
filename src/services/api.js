@@ -61,6 +61,12 @@ export const getWinner = async (roomCode) => {
   return response.data
 }
 
+// Get game result (winner + both secrets, only when game is finished)
+export const fetchGameResult = async (roomCode) => {
+  const response = await api.get(`/game-result?room_code=${roomCode}`)
+  return response.data
+}
+
 // Health check
 export const healthCheck = async () => {
   const response = await api.get('/health')

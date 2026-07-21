@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
 import { useToast } from '../context/ToastContext'
-import { getGameState, makeGuess } from '../services/api'
+import { getGameState, makeGuess, fetchGameResult } from '../services/api'
 import wsService from '../services/websocket'
 import NotesPanel from '../components/NotesPanel'
 import WinnerModal from '../components/WinnerModal'
@@ -86,6 +86,18 @@ export default function Game() {
         const state = await getGameState(roomCode)
         if (state.current_turn) turnChanged(state.current_turn)
         if (state.status === 'playing') setGameReady(true)
+        // Detect finished status (opponent won while WS was down)
+        if (state.status === 'finished' && !winner) {
+          const result = await fetchGameResult(roomCode)
+          if (result.game_over) {
+            setWinner({
+              winner_id: result.winner_id,
+              winner_name: result.winner_name,
+              secrets: result.secrets || [],
+            })
+            setTimeout(() => setShowWinnerModal(true), 200)
+          }
+        }
       } catch (err) {}
     }
     // Immediate poll on mount
@@ -96,7 +108,7 @@ export default function Game() {
       cancelled = true
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
-  }, [roomCode, turnChanged])
+  }, [roomCode, turnChanged, winner, setWinner])
 
   // Handle WebSocket reconnection - re-sync state immediately
   useEffect(() => {
@@ -105,12 +117,25 @@ export default function Game() {
         getGameState(roomCode).then(state => {
           if (state.current_turn) turnChanged(state.current_turn)
           if (state.status === 'playing') setGameReady(true)
+          // Re-sync winner on reconnect
+          if (state.status === 'finished' && !winner) {
+            fetchGameResult(roomCode).then(result => {
+              if (result.game_over) {
+                setWinner({
+                  winner_id: result.winner_id,
+                  winner_name: result.winner_name,
+                  secrets: result.secrets || [],
+                })
+                setTimeout(() => setShowWinnerModal(true), 200)
+              }
+            }).catch(() => {})
+          }
         }).catch(() => {})
       }
     }
     const unsub = wsService.on('connection_status', handler)
     return () => { unsub() }
-  }, [roomCode, turnChanged])
+  }, [roomCode, turnChanged, winner, setWinner])
 
   const guessesRef = useRef(guesses)
   guessesRef.current = guesses

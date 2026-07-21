@@ -1,18 +1,28 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
-import { Trophy, Home, Repeat2, X } from 'lucide-react'
+import { Trophy, Home, Repeat2, X, Eye, Shield } from 'lucide-react'
 
 export default function WinnerModal({ roomCode, onClose }) {
   const { playerName, playerId, winner, opponentName } = useGame()
   const isWinner = winner?.winner_id === playerId
   const [visible, setVisible] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [revealSecrets, setRevealSecrets] = useState(false)
+
+  // Get secrets from the winner data (from WS broadcast or polling fetch)
+  const secrets = winner?.secrets || []
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
     if (isWinner) setTimeout(() => setShowConfetti(true), 300)
+    // Auto-reveal secrets after a short delay
+    setTimeout(() => setRevealSecrets(true), 1200)
   }, [isWinner])
+
+  // Find my secret and opponent's secret
+  const mySecret = secrets.find(s => s.player_id === playerId)
+  const opponentSecret = secrets.find(s => s.player_id !== playerId)
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-500 ${visible ? 'opacity-100' : 'opacity-0'}`}>
@@ -53,7 +63,7 @@ export default function WinnerModal({ roomCode, onClose }) {
             : `${winner?.winner_name || opponentName || 'Your opponent'} cracked your code!`}
         </p>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
             <div className="text-base font-bold text-green-600 dark:text-green-400">{playerName}</div>
             <div className="text-[10px] text-gray-400">{isWinner ? 'Winner' : 'Player'}</div>
@@ -63,6 +73,30 @@ export default function WinnerModal({ roomCode, onClose }) {
             <div className="text-[10px] text-gray-400">{!isWinner ? 'Winner' : 'Player'}</div>
           </div>
         </div>
+
+        {/* Secret Numbers Reveal */}
+        {revealSecrets && secrets.length > 0 && (
+          <div className="animate-slide-up space-y-3 mb-4">
+            <div className="flex items-center justify-center gap-1.5">
+              <Eye size={14} className="text-gray-400" />
+              <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Secret Codes Revealed</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {secrets.map((s, i) => (
+                <div key={i} className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-3 space-y-1.5">
+                  <div className="text-[10px] font-medium text-gray-400 truncate">{s.player_name}</div>
+                  <div className="flex justify-center gap-1">
+                    {s.secret_number?.split('').map((d, j) => (
+                      <span key={j} className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-700 rounded-lg text-sm font-bold shadow-sm text-primary-600 dark:text-primary-400">
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-4 font-mono tracking-wider">
           Room: {roomCode}
