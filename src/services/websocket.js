@@ -134,7 +134,7 @@ class WebSocketService {
   }
 
   connectSpectate(roomCode) {
-    """Connect as a spectator (read-only, no player_id needed)."""
+    // Connect as a spectator (read-only, no player_id needed)
     if (this.isConnecting) return
     this.isConnecting = true
     this._roomCode = roomCode
@@ -251,10 +251,11 @@ class WebSocketService {
 
   _startHeartbeat() {
     this._stopHeartbeat()
-    // More aggressive heartbeat (10s) to keep Vercel serverless WebSocket alive
+    // Aggressive heartbeat (5s) to keep Vercel serverless WebSocket alive
+    // Vercel Hobby plan has ~10s idle timeout, so we heartbeat every 5s to stay active
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat()
-    }, 10000)
+    }, 5000)
   }
 
   _stopHeartbeat() {
