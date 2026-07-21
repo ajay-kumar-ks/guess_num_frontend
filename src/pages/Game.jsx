@@ -56,10 +56,6 @@ export default function Game() {
   const inputRefs = [useRef(null), useRef(null), useRef(null)]
   const historyEndRef = useRef(null)
 
-  // Use refs to avoid stale closures in async handlers
-  const connectionStatusRef = useRef(connectionStatus)
-  connectionStatusRef.current = connectionStatus
-
   // Use location state first, fall back to context (survives back-navigation)
   const [secretNumber, setSecretNumber] = useState(location.state?.secretNumber || ctxSecretNumber || '')
   const isMyTurn = currentTurn === playerId
@@ -140,9 +136,13 @@ export default function Game() {
   const guessesRef = useRef(guesses)
   guessesRef.current = guesses
 
+  // Track the last guess_id received via WebSocket (for dedup against REST response)
+  const lastWsGuessIdRef = useRef(null)
+
   useEffect(() => {
     const unsubGuessResult = wsService.on('guess_result', (data) => {
       addGuessResult(data)
+      lastWsGuessIdRef.current = data.guess_id
       setLastGuessIndex(guessesRef.current.length)
       setLoading(false)
     })
@@ -185,11 +185,13 @@ export default function Game() {
       // Send guess via REST API (reliable even when WebSocket is down on Vercel)
       const result = await makeGuess(roomCode, playerId, guess)
 
-      // If WebSocket is connected, the server will broadcast guess_result via WS.
-      // The WS listener handles adding the guess (no duplicate since WS arrives first).
-      // If WS is disconnected, we add the guess locally so the UI updates immediately.
-      // Using ref to avoid stale closure (connectionStatus can change during await).
-      if (connectionStatusRef.current !== 'connected') {
+      // Always add guess locally from REST response (handles zombie WebSocket scenario
+      // where connectionStatus says 'connected' but WS broadcast never arrives
+      // because Vercel silently killed the server instance).
+      // The WS listener also adds the guess, but we dedup by checking lastWsGuessIdRef.
+      // Server broadcasts WS BEFORE returning HTTP, so WS arrives first on a healthy connection.
+      if (result.guess_id !== lastWsGuessIdRef.current) {
+        // WS broadcast didn't arrive (zombie WS or disconnected) — add locally
         addGuessResult({
           guess_id: result.guess_id,
           guess: result.guess,
@@ -198,8 +200,8 @@ export default function Game() {
           player_id: result.player_id,
         })
         setLastGuessIndex(guesses.length)
-        setLoading(false)
       }
+      setLoading(false)
 
       if (result.game_over) {
         setWinner({ winner_id: result.winner_id, winner_name: playerName })
