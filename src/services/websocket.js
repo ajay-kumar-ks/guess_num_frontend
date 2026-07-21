@@ -67,6 +67,9 @@ class WebSocketService {
           case 'error':
             this._emit('error', data)
             break
+          case 'heartbeat_ack':
+            // Server acknowledged heartbeat - silently handled
+            break
           default:
             console.log('[WS] Unknown event type:', data.type)
         }

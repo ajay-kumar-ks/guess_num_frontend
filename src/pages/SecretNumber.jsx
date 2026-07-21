@@ -18,12 +18,22 @@ export default function SecretNumber() {
   const [showSecret, setShowSecret] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const inputRefs = [useRef(null), useRef(null), useRef(null)]
+  const submittedSecretRef = useRef(null)
+  const roomCodeRef = useRef(roomCode)
+  roomCodeRef.current = roomCode
 
   useEffect(() => {
-    const unsub = wsService.on('opponent_joined', (data) => {
+    const unsubOpponent = wsService.on('opponent_joined', (data) => {
       opponentJoined(data.name)
     })
-    return () => unsub()
+    // Listen for game_started via WebSocket (immediate notification when game starts)
+    // Using a ref to avoid stale closure issues with submittedSecret
+    const unsubGameStarted = wsService.on('game_started', () => {
+      if (!submittedSecretRef.current) return
+      secretSubmitted(submittedSecretRef.current)
+      navigate(`/game/${roomCodeRef.current}`, { state: { secretNumber: submittedSecretRef.current } })
+    })
+    return () => { unsubOpponent(); unsubGameStarted() }
   }, [])
 
   useEffect(() => {
@@ -73,6 +83,7 @@ export default function SecretNumber() {
         navigate(`/game/${roomCode}`, { state: { secretNumber } })
       } else {
         setSubmittedSecret(secretNumber)
+        submittedSecretRef.current = secretNumber
         setWaitingForOpponent(true)
       }
     } catch (err) {
