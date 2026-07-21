@@ -141,6 +141,9 @@ export default function Game() {
 
   useEffect(() => {
     const unsubGuessResult = wsService.on('guess_result', (data) => {
+      // Dedup: skip if already added locally (prevents duplicates from rapid guesses
+      // where the REST response adds locally before the WS broadcast arrives)
+      if (guessesRef.current.some(g => g.guess_id === data.guess_id)) return
       addGuessResult(data)
       lastWsGuessIdRef.current = data.guess_id
       setLastGuessIndex(guessesRef.current.length)
@@ -204,7 +207,13 @@ export default function Game() {
       setLoading(false)
 
       if (result.game_over) {
-        setWinner({ winner_id: result.winner_id, winner_name: playerName })
+        // Fetch secrets (WS broadcast may not arrive if zombie WS)
+        const gameResult = await fetchGameResult(roomCode).catch(() => ({ secrets: [] }))
+        setWinner({
+          winner_id: result.winner_id,
+          winner_name: playerName,
+          secrets: gameResult.secrets || [],
+        })
         setTimeout(() => setShowWinnerModal(true), 600)
       }
     } catch (err) {
