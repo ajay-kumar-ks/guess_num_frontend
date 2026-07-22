@@ -179,7 +179,9 @@ export default function Game() {
         // Sync guess history on reconnect or if guesses might be missing
         if (connectionStatus === 'reconnected' || (gameStatus !== state.status)) {
           try {
-            const historyResult = await getHistory(roomCode, playerId)
+            // CRITICAL FIX: Get ALL guesses (not just player's) to match the count tracking
+            // Bug was: polling fetched only player's guesses, but compared against total count
+            const historyResult = await getHistory(roomCode, null)
             // Add any guesses that were missed while offline
             if (historyResult.guesses && historyResult.guesses.length > lastSyncedGuessCountRef.current) {
               for (let i = lastSyncedGuessCountRef.current; i < historyResult.guesses.length; i++) {
