@@ -251,11 +251,13 @@ class WebSocketService {
 
   _startHeartbeat() {
     this._stopHeartbeat()
-    // Aggressive heartbeat (5s) to keep Vercel serverless WebSocket alive
-    // Vercel Hobby plan has ~10s idle timeout, so we heartbeat every 5s to stay active
+    // CRITICAL: More aggressive heartbeat (3s) for Vercel Hobby plan
+    // Vercel has ~10s idle timeout for WebSockets. Heartbeat every 3s ensures
+    // connection stays alive in concurrent multi-user scenarios where messages
+    // may arrive infrequently. This is critical for 10+ simultaneous players.
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat()
-    }, 5000)
+    }, 3000)
   }
 
   _stopHeartbeat() {

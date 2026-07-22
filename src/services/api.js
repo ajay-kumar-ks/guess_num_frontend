@@ -67,6 +67,12 @@ export const fetchGameResult = async (roomCode) => {
   return response.data
 }
 
+// CRITICAL: Full game sync for reconnection/refresh - returns all game data
+export const syncGameState = async (roomCode) => {
+  const response = await api.get(`/game-sync?room_code=${roomCode}`)
+  return response.data
+}
+
 // Health check
 export const healthCheck = async () => {
   const response = await api.get('/health')

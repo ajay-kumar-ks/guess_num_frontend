@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
 import { useToast } from '../context/ToastContext'
-import { getGameState, makeGuess, fetchGameResult } from '../services/api'
+import { getGameState, makeGuess, fetchGameResult, getHistory, syncGameState } from '../services/api'
 import wsService from '../services/websocket'
 import NotesPanel from '../components/NotesPanel'
 import WinnerModal from '../components/WinnerModal'
@@ -58,11 +58,103 @@ export default function Game() {
 
   // Use location state first, fall back to context (survives back-navigation)
   const [secretNumber, setSecretNumber] = useState(location.state?.secretNumber || ctxSecretNumber || '')
+  const [gameStatus, setGameStatus] = useState(null)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   const isMyTurn = currentTurn === playerId
 
   useEffect(() => {
-    if (!secretNumber) navigate(`/secret-number/${roomCode}`, { replace: true })
-  }, [])
+    const validateGameAccess = async () => {
+      try {
+        // CRITICAL FIX: Use comprehensive sync endpoint to restore all game data on reconnect/refresh
+        const syncData = await syncGameState(roomCode)
+        const state = syncData.game_state
+        setGameStatus(state.status)
+        // Only allow access if game is playing and player has a secret
+        if (state.status !== 'playing') {
+          navigate(`/secret-number/${roomCode}`, { replace: true })
+          return
+        }
+        if (!secretNumber && !location.state?.secretNumber) {
+          navigate(`/secret-number/${roomCode}`, { replace: true })
+        }
+        
+        // Load all guesses from sync data
+        if (syncData.guesses && syncData.guesses.length > 0) {
+          syncData.guesses.forEach(guess => {
+            // Only add if not already in context (avoid duplicates)
+            if (!guesses.some(g => g.guess_id === guess.guess_id)) {
+              addGuessResult({
+                guess_id: guess.guess_id || Math.random().toString(),
+                guess: guess.guess,
+                position_count: guess.position_count,
+                number_count: guess.number_count,
+                player_id: guess.player_id,
+              })
+            }
+          })
+        }
+        lastSyncedGuessCountRef.current = syncData.guesses?.length || 0
+        
+        // Update turn from server state
+        if (state.current_turn) {
+          turnChanged(state.current_turn)
+        }
+        
+        // Check if game is already finished
+        if (syncData.winner && syncData.winner.game_over && !winner) {
+          setWinner({
+            winner_id: syncData.winner.winner_id,
+            winner_name: syncData.winner.winner_name,
+            secrets: syncData.winner.secrets || [],
+          })
+          setTimeout(() => setShowWinnerModal(true), 200)
+        }
+        
+        // Cache to localStorage for resilience
+        try {
+          localStorage.setItem(`game_${roomCode}`, JSON.stringify({
+            timestamp: Date.now(),
+            gameState: state,
+            guesses: syncData.guesses,
+            winner: syncData.winner,
+          }))
+        } catch (e) {
+          // localStorage might be full, ignore
+        }
+        
+        setInitialLoadComplete(true)
+      } catch (err) {
+        // If sync fails, try to restore from localStorage
+        try {
+          const cached = localStorage.getItem(`game_${roomCode}`)
+          if (cached) {
+            const data = JSON.parse(cached)
+            if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) { // 24 hour cache
+              setGameStatus(data.gameState.status)
+              if (data.guesses) {
+                data.guesses.forEach(guess => {
+                  if (!guesses.some(g => g.guess_id === guess.guess_id)) {
+                    addGuessResult(guess)
+                  }
+                })
+              }
+              if (data.winner?.game_over) {
+                setWinner(data.winner)
+              }
+              setInitialLoadComplete(true)
+              return
+            }
+          }
+        } catch (cacheErr) {
+          // Cache restore failed
+        }
+        
+        // If we can't validate, redirect to be safe
+        navigate(`/secret-number/${roomCode}`, { replace: true })
+      }
+    }
+    validateGameAccess()
+  }, [roomCode, navigate, secretNumber, addGuessResult, turnChanged, setWinner, guesses, winner])
 
   // Sync secret number into context on mount (handles both location state and back-nav)
   useEffect(() => {
@@ -74,6 +166,7 @@ export default function Game() {
 
   // Continuous polling to sync game state (critical for Vercel where WebSocket drops frequently)
   const pollIntervalRef = useRef(null)
+  const lastSyncedGuessCountRef = useRef(0)
   useEffect(() => {
     let cancelled = false
     const doPoll = async () => {
@@ -82,6 +175,32 @@ export default function Game() {
         const state = await getGameState(roomCode)
         if (state.current_turn) turnChanged(state.current_turn)
         if (state.status === 'playing') setGameReady(true)
+        
+        // Sync guess history on reconnect or if guesses might be missing
+        if (connectionStatus === 'reconnected' || (gameStatus !== state.status)) {
+          try {
+            const historyResult = await getHistory(roomCode, playerId)
+            // Add any guesses that were missed while offline
+            if (historyResult.guesses && historyResult.guesses.length > lastSyncedGuessCountRef.current) {
+              for (let i = lastSyncedGuessCountRef.current; i < historyResult.guesses.length; i++) {
+                const guess = historyResult.guesses[i]
+                if (!guesses.some(g => g.guess_id === guess.guess_id)) {
+                  addGuessResult({
+                    guess_id: guess.guess_id,
+                    guess: guess.guess,
+                    position_count: guess.position_count,
+                    number_count: guess.number_count,
+                    player_id: guess.player_id,
+                  })
+                }
+              }
+              lastSyncedGuessCountRef.current = historyResult.guesses.length
+            }
+          } catch (histErr) {
+            // Silently fail - polling will retry
+          }
+        }
+        
         // Detect finished status (opponent won while WS was down)
         if (state.status === 'finished' && !winner) {
           const result = await fetchGameResult(roomCode)
@@ -94,17 +213,20 @@ export default function Game() {
             setTimeout(() => setShowWinnerModal(true), 200)
           }
         }
+        setGameStatus(state.status)
       } catch (err) {}
     }
     // Immediate poll on mount
     doPoll()
-    // Then poll every 5 seconds as fallback for WebSocket disconnections
-    pollIntervalRef.current = setInterval(doPoll, 5000)
+    // CRITICAL: Poll every 2 seconds (faster than before) for Vercel's unreliable WebSocket
+    // With 10+ concurrent players, we need aggressive fallback to REST API
+    // 2s provides near-real-time sync while keeping load reasonable
+    pollIntervalRef.current = setInterval(doPoll, 2000)
     return () => {
       cancelled = true
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
-  }, [roomCode, turnChanged, winner, setWinner])
+  }, [roomCode, turnChanged, winner, setWinner, playerId, addGuessResult, guesses, connectionStatus, gameStatus])
 
   // Handle WebSocket reconnection - re-sync state immediately
   useEffect(() => {
