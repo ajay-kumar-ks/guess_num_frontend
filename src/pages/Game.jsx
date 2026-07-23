@@ -74,8 +74,12 @@ export default function Game() {
           navigate(`/secret-number/${roomCode}`, { replace: true })
           return
         }
-        if (!secretNumber && !location.state?.secretNumber) {
+        // Check server-side whether this player already submitted a secret.
+        const me = state.players.find(p => p.id === playerId)
+        const hasSubmitted = me?.has_submitted_secret
+        if (!hasSubmitted && !secretNumber && !location.state?.secretNumber) {
           navigate(`/secret-number/${roomCode}`, { replace: true })
+          return
         }
         
         // Load all guesses from sync data
@@ -154,7 +158,7 @@ export default function Game() {
       }
     }
     validateGameAccess()
-  }, [roomCode, navigate, secretNumber, addGuessResult, turnChanged, setWinner, guesses, winner])
+  }, [roomCode, navigate, secretNumber, addGuessResult, turnChanged, setWinner, guesses, winner, playerId])
 
   // Sync secret number into context on mount (handles both location state and back-nav)
   useEffect(() => {

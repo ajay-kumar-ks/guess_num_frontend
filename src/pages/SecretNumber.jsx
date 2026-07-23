@@ -6,21 +6,40 @@ import wsService from '../services/websocket'
 import { getGameState } from '../services/api'
 import { Lock, Unlock, Eye, EyeOff, Users, Loader2, AlertCircle, Shield } from 'lucide-react'
 
+const getPendingSecretKey = (roomCode) => `pending_secret_${roomCode}`
+
 export default function SecretNumber() {
   const { roomCode } = useParams()
+  const pendingSecretKey = getPendingSecretKey(roomCode)
   const navigate = useNavigate()
   const { playerId, playerName, opponentName, secretSubmitted, opponentJoined } = useGame()
   const [digits, setDigits] = useState(['', '', ''])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [waitingForOpponent, setWaitingForOpponent] = useState(false)
-  const [submittedSecret, setSubmittedSecret] = useState(null)
+  const [submittedSecret, setSubmittedSecret] = useState(() => {
+    try {
+      return localStorage.getItem(pendingSecretKey)
+    } catch {
+      return null
+    }
+  })
+  const [waitingForOpponent, setWaitingForOpponent] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem(pendingSecretKey))
+    } catch {
+      return false
+    }
+  })
   const [showSecret, setShowSecret] = useState(false)
   const [showHint, setShowHint] = useState(false)
   const inputRefs = [useRef(null), useRef(null), useRef(null)]
   const submittedSecretRef = useRef(null)
   const roomCodeRef = useRef(roomCode)
   roomCodeRef.current = roomCode
+
+  useEffect(() => {
+    submittedSecretRef.current = submittedSecret
+  }, [submittedSecret])
 
   useEffect(() => {
     const unsubOpponent = wsService.on('opponent_joined', (data) => {
@@ -41,6 +60,9 @@ export default function SecretNumber() {
         getGameState(roomCodeRef.current).then(state => {
           if (state.status === 'playing' && submittedSecretRef.current) {
             secretSubmitted(submittedSecretRef.current)
+            try {
+              localStorage.removeItem(pendingSecretKey)
+            } catch {}
             navigate(`/game/${roomCodeRef.current}`, { state: { secretNumber: submittedSecretRef.current } })
           }
         }).catch(() => {})
@@ -56,13 +78,16 @@ export default function SecretNumber() {
         const state = await getGameState(roomCode)
         if (state.status === 'playing') {
           clearInterval(interval)
+          try {
+            localStorage.removeItem(pendingSecretKey)
+          } catch {}
           secretSubmitted(submittedSecret)
           navigate(`/game/${roomCode}`, { state: { secretNumber: submittedSecret } })
         }
       } catch (err) {}
     }, 2000)
     return () => clearInterval(interval)
-  }, [waitingForOpponent, roomCode, submittedSecret])
+  }, [waitingForOpponent, roomCode, submittedSecret, pendingSecretKey, secretSubmitted, navigate])
 
   const handleDigitChange = (index, value) => {
     const digit = value.slice(-1)
@@ -93,10 +118,18 @@ export default function SecretNumber() {
       })
       if (response.data.both_submitted) {
         secretSubmitted(secretNumber)
+        submittedSecretRef.current = secretNumber
+        try {
+          localStorage.removeItem(pendingSecretKey)
+        } catch {}
         navigate(`/game/${roomCode}`, { state: { secretNumber } })
       } else {
+        secretSubmitted(secretNumber)
         setSubmittedSecret(secretNumber)
         submittedSecretRef.current = secretNumber
+        try {
+          localStorage.setItem(pendingSecretKey, secretNumber)
+        } catch {}
         setWaitingForOpponent(true)
       }
     } catch (err) {

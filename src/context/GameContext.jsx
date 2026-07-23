@@ -47,6 +47,15 @@ function gameReducer(state, action) {
       }
 
     case 'GUESS_RESULT':
+      if (!action.payload?.guess_id) {
+        return {
+          ...state,
+          guesses: [...state.guesses, action.payload],
+        }
+      }
+      if (state.guesses.some((g) => g.guess_id === action.payload.guess_id)) {
+        return state
+      }
       return {
         ...state,
         guesses: [...state.guesses, action.payload],
