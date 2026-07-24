@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Target, Plus, LogIn, Hash, Repeat, Trophy, Eye, Key } from 'lucide-react'
+import { Target, Plus, LogIn, Hash, Repeat, Trophy, Eye, Key, Smartphone } from 'lucide-react'
 
 const steps = [
   { icon: Plus, label: 'Create or join a room' },
@@ -64,6 +64,10 @@ export default function Home() {
         <Link to="/join-room" className="btn-secondary w-full">
           <LogIn size={18} />
           Join a Room
+        </Link>
+        <Link to="/pass-and-play" className="btn-secondary w-full border-cyan-200 text-cyan-700 hover:bg-cyan-50 dark:border-cyan-900/40 dark:text-cyan-300 dark:hover:bg-cyan-900/20">
+          <Smartphone size={18} />
+          Pass & Play on One Phone
         </Link>
       </div>
 

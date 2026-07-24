@@ -10,6 +10,7 @@ import SecretNumber from './pages/SecretNumber'
 import Game from './pages/Game'
 import Winner from './pages/Winner'
 import Spectate from './pages/Spectate'
+import PassAndPlay from './pages/PassAndPlay'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="game/:roomCode" element={<Game />} />
             <Route path="winner/:roomCode" element={<Winner />} />
             <Route path="spectate/:roomCode" element={<Spectate />} />
+            <Route path="pass-and-play" element={<PassAndPlay />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
