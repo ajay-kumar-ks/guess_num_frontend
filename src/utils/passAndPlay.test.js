@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { evaluateGuess, validateSecret } from './passAndPlay.js'
 
 test('counts exact and misplaced digits correctly', () => {
-  assert.deepEqual(evaluateGuess('123', '132'), { positionCount: 1, numberCount: 3, isMatch: false })
-  assert.deepEqual(evaluateGuess('123', '123'), { positionCount: 3, numberCount: 3, isMatch: true })
-  assert.deepEqual(evaluateGuess('437', '734'), { positionCount: 1, numberCount: 3, isMatch: false })
+  assert.deepEqual(evaluateGuess('123', '132'), { positionCount: 1, numberCount: 2, isMatch: false })
+  assert.deepEqual(evaluateGuess('123', '123'), { positionCount: 3, numberCount: 0, isMatch: true })
+  assert.deepEqual(evaluateGuess('437', '734'), { positionCount: 1, numberCount: 2, isMatch: false })
 })
 
 test('validates secret requirements', () => {

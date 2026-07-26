@@ -33,9 +33,12 @@ export function evaluateGuess(guess, secret) {
     }
   })
 
+  // Digits in correct positions should not count toward numberCount
+  numberCount -= positionCount
+
   return {
     positionCount,
     numberCount,
-    isMatch: positionCount === 3 && numberCount === 3,
+    isMatch: positionCount === 3,
   }
 }
