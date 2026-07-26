@@ -4,6 +4,7 @@ import axios from 'axios'
 import { useGame } from '../context/GameContext'
 import wsService from '../services/websocket'
 import { getGameState } from '../services/api'
+import { getApiBaseUrl } from '../services/config'
 import { Lock, Unlock, Eye, EyeOff, Users, Loader2, AlertCircle, Shield } from 'lucide-react'
 
 const getPendingSecretKey = (roomCode) => `pending_secret_${roomCode}`
@@ -113,7 +114,7 @@ export default function SecretNumber() {
     setLoading(true)
     setError('')
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/submit-secret`, {
+      const response = await axios.post(`${getApiBaseUrl()}/submit-secret`, {
         room_code: roomCode, player_id: playerId, secret_number: secretNumber,
       })
       if (response.data.both_submitted) {

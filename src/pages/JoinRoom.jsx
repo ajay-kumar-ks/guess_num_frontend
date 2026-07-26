@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { LogIn, User, Key, Loader2, AlertCircle } from 'lucide-react'
+import { getApiBaseUrl } from '../services/config'
 
 export default function JoinRoom() {
   const navigate = useNavigate()
@@ -34,7 +35,7 @@ export default function JoinRoom() {
 
     try {
       const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/join-room`,
+        `${getApiBaseUrl()}/join-room`,
         { room_code: roomCode.trim().toUpperCase(), name: playerName.trim() }
       )
       navigate(`/waiting-room/${response.data.room_code}`, {

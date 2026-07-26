@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getGameState } from '../services/api'
 import wsService from '../services/websocket'
+import { getApiBaseUrl } from '../services/config'
 import { Eye, Target, Clock, Wifi, WifiOff, Loader2, Trophy, User, Hash, AlertCircle } from 'lucide-react'
 
 function SpectateGuessRow({ guess, position, number, playerName, isPlayer1 }) {
@@ -59,7 +60,7 @@ export default function Spectate() {
         setPlayers(state.players || [])
         // Also fetch initial guess history via the API
         try {
-          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/spectate/game-state?room_code=${roomCode}`)
+          const res = await fetch(`${getApiBaseUrl()}/spectate/game-state?room_code=${roomCode}`)
           const data = await res.json()
           if (!cancelled) {
             setGuesses(data.guesses || [])
@@ -121,7 +122,7 @@ export default function Spectate() {
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/spectate/game-state?room_code=${roomCode}`)
+        const res = await fetch(`${getApiBaseUrl()}/spectate/game-state?room_code=${roomCode}`)
         const data = await res.json()
         if (data) {
           setGameState(prev => prev ? {

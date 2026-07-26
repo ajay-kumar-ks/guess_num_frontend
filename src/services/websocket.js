@@ -1,3 +1,5 @@
+import { getWsBaseUrl } from './config'
+
 class WebSocketService {
   constructor() {
     this.ws = null
@@ -17,7 +19,7 @@ class WebSocketService {
     this._roomCode = roomCode
     this._playerId = playerId
 
-    let baseUrl = import.meta.env.VITE_WS_BASE_URL
+    let baseUrl = getWsBaseUrl()
     // Auto-detect protocol: use wss:// when page is served over HTTPS
     if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
       baseUrl = baseUrl.replace(/^ws:/, 'wss:')
@@ -140,7 +142,7 @@ class WebSocketService {
     this._roomCode = roomCode
     this._playerId = null
 
-    let baseUrl = import.meta.env.VITE_WS_BASE_URL
+    let baseUrl = getWsBaseUrl()
     if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
       baseUrl = baseUrl.replace(/^ws:/, 'wss:')
     }

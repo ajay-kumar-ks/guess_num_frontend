@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { Plus, User, Loader2, AlertCircle } from 'lucide-react'
+import { getApiBaseUrl } from '../services/config'
 
 export default function CreateRoom() {
   const navigate = useNavigate()
@@ -21,7 +22,7 @@ export default function CreateRoom() {
 
     try {
       const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/create-room`,
+        `${getApiBaseUrl()}/create-room`,
         { name: playerName.trim() }
       )
       navigate(`/waiting-room/${response.data.room_code}`, {
