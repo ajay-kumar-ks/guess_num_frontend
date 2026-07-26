@@ -1,17 +1,47 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useGame } from '../context/GameContext'
-import { Trophy, Home, Repeat2, X, Eye, Shield } from 'lucide-react'
+import { syncGameState } from '../services/api'
+import wsService from '../services/websocket'
+import { Trophy, Home, Repeat2, X, Eye, Target, Sparkles, BarChart3, Loader2 } from 'lucide-react'
 
 export default function WinnerModal({ roomCode, onClose }) {
-  const { playerName, playerId, winner, opponentName } = useGame()
+  const navigate = useNavigate()
+  const { playerName, playerId, winner, opponentName, resetGame } = useGame()
   const isWinner = winner?.winner_id === playerId
   const [visible, setVisible] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
   const [revealSecrets, setRevealSecrets] = useState(false)
+  const [showAnalysis, setShowAnalysis] = useState(false)
+  const [analysisData, setAnalysisData] = useState(null)
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false)
 
   // Get secrets from the winner data (from WS broadcast or polling fetch)
   const secrets = winner?.secrets || []
+
+  const handlePlayAgain = useCallback(() => {
+    // Reset game context and disconnect WS to prevent stale state leaking into new game
+    resetGame()
+    wsService.forceDisconnect()
+    navigate('/create-room')
+  }, [resetGame, navigate])
+
+  const handleHome = useCallback(() => {
+    resetGame()
+    wsService.forceDisconnect()
+    navigate('/')
+  }, [resetGame, navigate])
+
+  const handleViewAnalysis = useCallback(() => {
+    setLoadingAnalysis(true)
+    setShowAnalysis(true)
+    syncGameState(roomCode).then(data => {
+      setAnalysisData(data)
+      setLoadingAnalysis(false)
+    }).catch(() => {
+      setLoadingAnalysis(false)
+    })
+  }, [roomCode])
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
@@ -20,9 +50,9 @@ export default function WinnerModal({ roomCode, onClose }) {
     setTimeout(() => setRevealSecrets(true), 1200)
   }, [isWinner])
 
-  // Find my secret and opponent's secret
-  const mySecret = secrets.find(s => s.player_id === playerId)
-  const opponentSecret = secrets.find(s => s.player_id !== playerId)
+  // Compute stats from analysis data
+  const myGuesses = analysisData?.guesses?.filter(g => g.player_id === playerId) || []
+  const opponentGuesses = analysisData?.guesses?.filter(g => g.player_id !== playerId) || []
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-500 ${visible ? 'opacity-100' : 'opacity-0'}`}>
@@ -102,9 +132,78 @@ export default function WinnerModal({ roomCode, onClose }) {
           Room: {roomCode}
         </div>
 
-        <div className="space-y-3">
-          <Link to="/" onClick={onClose} className="btn-primary w-full"><Home size={16} /> Home</Link>
-          <Link to="/create-room" onClick={onClose} className="btn-secondary w-full"><Repeat2 size={16} /> Play Again</Link>
+        {/* Game Analysis Toggle */}
+        {!showAnalysis ? (
+          <button onClick={handleViewAnalysis} className="btn-secondary w-full mb-3">
+            <BarChart3 size={16} />
+            View Game Analysis
+          </button>
+        ) : (
+          <div className="animate-slide-up mb-4">
+            {loadingAnalysis ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 size={20} className="animate-spin text-primary-500" />
+              </div>
+            ) : analysisData ? (
+              <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-3 space-y-3">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+                  <Target size={12} />
+                  <span>Guess History ({analysisData.guesses?.length || 0} guesses)</span>
+                </div>
+
+                {/* Stats Summary */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-2.5 text-center">
+                    <div className="text-xs font-bold text-primary-600 dark:text-primary-400">{myGuesses.length}</div>
+                    <div className="text-[9px] text-gray-400 truncate">{playerName}'s guesses</div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-2.5 text-center">
+                    <div className="text-xs font-bold text-gray-700 dark:text-gray-300">{opponentGuesses.length}</div>
+                    <div className="text-[9px] text-gray-400 truncate">{opponentName || 'Opponent'}'s guesses</div>
+                  </div>
+                </div>
+
+                {/* Guess rows */}
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {analysisData.guesses?.map((g, i) => {
+                    const isMyGuess = g.player_id === playerId
+                    return (
+                      <div key={g.guess_id || i} className={`flex items-center gap-2 p-2 rounded-lg ${
+                        isMyGuess ? 'bg-white dark:bg-gray-800' : 'bg-gray-100/50 dark:bg-gray-800/50'
+                      }`}>
+                        <div className="text-[9px] text-gray-400 w-4 text-right font-mono">{i + 1}.</div>
+                        <div className="flex gap-0.5">
+                          {g.guess?.split('').map((d, j) => (
+                            <span key={j} className="w-5 h-6 flex items-center justify-center bg-primary-50 dark:bg-primary-900/30 rounded text-[10px] font-bold text-primary-600 dark:text-primary-400">{d}</span>
+                          ))}
+                        </div>
+                        <div className="ml-auto flex items-center gap-2 text-[10px] font-medium">
+                          <span className="text-green-600 dark:text-green-400">{g.position_count}✓</span>
+                          <span className="text-yellow-600 dark:text-yellow-400">{g.number_count}◉</span>
+                        </div>
+                        <div className="text-[8px] text-gray-400 w-12 text-right truncate">
+                          {isMyGuess ? playerName : (opponentName || 'Opponent')}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <button
+                  onClick={() => navigate(`/winner/${roomCode}`)}
+                  className="btn-primary w-full"
+                >
+                  <Sparkles size={16} />
+                  Full Analysis
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <button onClick={handleHome} className="btn-primary w-full"><Home size={16} /> Home</button>
+          <button onClick={handlePlayAgain} className="btn-secondary w-full"><Repeat2 size={16} /> Play Again</button>
         </div>
       </div>
     </div>

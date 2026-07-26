@@ -55,6 +55,17 @@ export default function Game() {
   const [showSecret, setShowSecret] = useState(false)
   const inputRefs = [useRef(null), useRef(null), useRef(null)]
   const historyEndRef = useRef(null)
+  const opponentIdRef = useRef(null)
+  
+  // Track opponent ID from game state (needed for immediate turn toggle after guess)
+  useEffect(() => {
+    if (roomCode && playerId) {
+      getGameState(roomCode).then(state => {
+        const opp = state.players?.find(p => p.id !== playerId)
+        if (opp) opponentIdRef.current = opp.id
+      }).catch(() => {})
+    }
+  }, [roomCode, playerId])
 
   // Use location state first, fall back to context (survives back-navigation)
   const [secretNumber, setSecretNumber] = useState(location.state?.secretNumber || ctxSecretNumber || '')
@@ -62,19 +73,36 @@ export default function Game() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   const isMyTurn = currentTurn === playerId
 
+  // Run ONCE on mount to validate the game state and restore from sync/localStorage
+  // Does NOT re-run on state changes to prevent flickering/race conditions
   useEffect(() => {
+    let cancelled = false
     const validateGameAccess = async () => {
       try {
-        // CRITICAL FIX: Use comprehensive sync endpoint to restore all game data on reconnect/refresh
         const syncData = await syncGameState(roomCode)
+        if (cancelled) return
         const state = syncData.game_state
         setGameStatus(state.status)
-        // Only allow access if game is playing and player has a secret
+
+        // If game is finished, show the winner modal
+        if (syncData.winner?.game_over) {
+          setWinner({
+            winner_id: syncData.winner.winner_id,
+            winner_name: syncData.winner.winner_name,
+            secrets: syncData.winner.secrets || [],
+          })
+          setTimeout(() => setShowWinnerModal(true), 200)
+          setInitialLoadComplete(true)
+          return
+        }
+
+        // Not playing - redirect to appropriate page
         if (state.status !== 'playing') {
           navigate(`/secret-number/${roomCode}`, { replace: true })
           return
         }
-        // Check server-side whether this player already submitted a secret.
+
+        // Check if player has submitted a secret
         const me = state.players.find(p => p.id === playerId)
         const hasSubmitted = me?.has_submitted_secret
         if (!hasSubmitted && !secretNumber && !location.state?.secretNumber) {
@@ -85,16 +113,13 @@ export default function Game() {
         // Load all guesses from sync data
         if (syncData.guesses && syncData.guesses.length > 0) {
           syncData.guesses.forEach(guess => {
-            // Only add if not already in context (avoid duplicates)
-            if (!guesses.some(g => g.guess_id === guess.guess_id)) {
-              addGuessResult({
-                guess_id: guess.guess_id || Math.random().toString(),
-                guess: guess.guess,
-                position_count: guess.position_count,
-                number_count: guess.number_count,
-                player_id: guess.player_id,
-              })
-            }
+            addGuessResult({
+              guess_id: guess.guess_id || Math.random().toString(),
+              guess: guess.guess,
+              position_count: guess.position_count,
+              number_count: guess.number_count,
+              player_id: guess.player_id,
+            })
           })
         }
         lastSyncedGuessCountRef.current = syncData.guesses?.length || 0
@@ -102,16 +127,6 @@ export default function Game() {
         // Update turn from server state
         if (state.current_turn) {
           turnChanged(state.current_turn)
-        }
-        
-        // Check if game is already finished
-        if (syncData.winner && syncData.winner.game_over && !winner) {
-          setWinner({
-            winner_id: syncData.winner.winner_id,
-            winner_name: syncData.winner.winner_name,
-            secrets: syncData.winner.secrets || [],
-          })
-          setTimeout(() => setShowWinnerModal(true), 200)
         }
         
         // Cache to localStorage for resilience
@@ -122,24 +137,20 @@ export default function Game() {
             guesses: syncData.guesses,
             winner: syncData.winner,
           }))
-        } catch (e) {
-          // localStorage might be full, ignore
-        }
+        } catch (e) {}
         
         setInitialLoadComplete(true)
       } catch (err) {
-        // If sync fails, try to restore from localStorage
+        // Try localStorage fallback
         try {
           const cached = localStorage.getItem(`game_${roomCode}`)
           if (cached) {
             const data = JSON.parse(cached)
-            if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) { // 24 hour cache
+            if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
               setGameStatus(data.gameState.status)
               if (data.guesses) {
                 data.guesses.forEach(guess => {
-                  if (!guesses.some(g => g.guess_id === guess.guess_id)) {
-                    addGuessResult(guess)
-                  }
+                  addGuessResult(guess)
                 })
               }
               if (data.winner?.game_over) {
@@ -149,16 +160,13 @@ export default function Game() {
               return
             }
           }
-        } catch (cacheErr) {
-          // Cache restore failed
-        }
-        
-        // If we can't validate, redirect to be safe
+        } catch (cacheErr) {}
         navigate(`/secret-number/${roomCode}`, { replace: true })
       }
     }
     validateGameAccess()
-  }, [roomCode, navigate, secretNumber, addGuessResult, turnChanged, setWinner, guesses, winner, playerId])
+    return () => { cancelled = true }
+  }, [roomCode, playerId])
 
   // Sync secret number into context on mount (handles both location state and back-nav)
   useEffect(() => {
@@ -168,83 +176,45 @@ export default function Game() {
     }
   }, [])
 
-  // Continuous polling to sync game state (critical for Vercel where WebSocket drops frequently)
+  // Lightweight polling - runs independently and does NOT restart on state changes
+  // Uses refs instead of state deps to avoid tearing down/re-creating the interval
   const pollIntervalRef = useRef(null)
   const lastSyncedGuessCountRef = useRef(0)
+  const lastPolledTurnRef = useRef(null)
+  const hasWinnerRef = useRef(false)
+  
+  // Keep hasWinnerRef in sync with winner state without re-triggering the polling effect
+  useEffect(() => { hasWinnerRef.current = winner ? true : false }, [winner])
+  
   useEffect(() => {
     let cancelled = false
+
     const doPoll = async () => {
       if (cancelled) return
+      if (hasWinnerRef.current) {
+        // Game is over - no need to keep polling
+        return
+      }
       try {
         const state = await getGameState(roomCode)
-        if (state.current_turn) turnChanged(state.current_turn)
+        
+        // Only update gameReady once (from server)
         if (state.status === 'playing') setGameReady(true)
         
-        // Sync guess history on reconnect or if guesses might be missing
-        if (connectionStatus === 'reconnected' || (gameStatus !== state.status)) {
-          try {
-            // CRITICAL FIX: Get ALL guesses (not just player's) to match the count tracking
-            // Bug was: polling fetched only player's guesses, but compared against total count
-            const historyResult = await getHistory(roomCode, null)
-            // Add any guesses that were missed while offline
-            if (historyResult.guesses && historyResult.guesses.length > lastSyncedGuessCountRef.current) {
-              for (let i = lastSyncedGuessCountRef.current; i < historyResult.guesses.length; i++) {
-                const guess = historyResult.guesses[i]
-                if (!guesses.some(g => g.guess_id === guess.guess_id)) {
-                  addGuessResult({
-                    guess_id: guess.guess_id,
-                    guess: guess.guess,
-                    position_count: guess.position_count,
-                    number_count: guess.number_count,
-                    player_id: guess.player_id,
-                  })
-                }
-              }
-              lastSyncedGuessCountRef.current = historyResult.guesses.length
-            }
-          } catch (histErr) {
-            // Silently fail - polling will retry
-          }
+        // Only call turnChanged if turn actually changed (avoids redundant re-renders)
+        if (state.current_turn && state.current_turn !== lastPolledTurnRef.current) {
+          lastPolledTurnRef.current = state.current_turn
+          turnChanged(state.current_turn)
         }
         
-        // Detect finished status (opponent won while WS was down)
-        if (state.status === 'finished' && !winner) {
-          const result = await fetchGameResult(roomCode)
-          if (result.game_over) {
-            setWinner({
-              winner_id: result.winner_id,
-              winner_name: result.winner_name,
-              secrets: result.secrets || [],
-            })
-            setTimeout(() => setShowWinnerModal(true), 200)
-          }
-        }
-        setGameStatus(state.status)
-      } catch (err) {}
-    }
-    // Immediate poll on mount
-    doPoll()
-    // CRITICAL: Poll every 2 seconds (faster than before) for Vercel's unreliable WebSocket
-    // With 10+ concurrent players, we need aggressive fallback to REST API
-    // 2s provides near-real-time sync while keeping load reasonable
-    pollIntervalRef.current = setInterval(doPoll, 2000)
-    return () => {
-      cancelled = true
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    }
-  }, [roomCode, turnChanged, winner, setWinner, playerId, addGuessResult, guesses, connectionStatus, gameStatus])
-
-  // Handle WebSocket reconnection - re-sync state immediately
-  useEffect(() => {
-    const handler = (status) => {
-      if (status === 'reconnected') {
-        getGameState(roomCode).then(state => {
-          if (state.current_turn) turnChanged(state.current_turn)
-          if (state.status === 'playing') setGameReady(true)
-          // Re-sync winner on reconnect
-          if (state.status === 'finished' && !winner) {
-            fetchGameResult(roomCode).then(result => {
-              if (result.game_over) {
+        // Track status changes locally to avoid re-triggering this effect
+        if (state.status !== 'playing') {
+          // Game is waiting or finished - check for winner
+          if (state.status === 'finished') {
+            try {
+              const result = await fetchGameResult(roomCode)
+              if (result.game_over && !hasWinnerRef.current) {
+                hasWinnerRef.current = true
                 setWinner({
                   winner_id: result.winner_id,
                   winner_name: result.winner_name,
@@ -252,14 +222,38 @@ export default function Game() {
                 })
                 setTimeout(() => setShowWinnerModal(true), 200)
               }
-            }).catch(() => {})
+            } catch (e) {}
           }
+        }
+      } catch (err) {}
+    }
+
+    // Immediate first poll
+    doPoll()
+    // Poll every 3 seconds (slower is fine with WS + REST-on-guess)
+    pollIntervalRef.current = setInterval(doPoll, 3000)
+    return () => {
+      cancelled = true
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+    }
+    // Only depends on roomCode - won't restart on winner/guesses/turn changes
+  }, [roomCode])
+
+  // Handle WebSocket reconnection - re-sync state immediately
+  // Uses ref to avoid stale closure on `winner` and stable dependency array
+  useEffect(() => {
+    const handler = (status) => {
+      if (status === 'reconnected') {
+        getGameState(roomCode).then(state => {
+          if (state.current_turn) turnChanged(state.current_turn)
+          if (state.status === 'playing') setGameReady(true)
+          // Re-sync winner on reconnect (polling also handles this)
         }).catch(() => {})
       }
     }
     const unsub = wsService.on('connection_status', handler)
     return () => { unsub() }
-  }, [roomCode, turnChanged, winner, setWinner])
+  }, [roomCode, turnChanged])
 
   const guessesRef = useRef(guesses)
   guessesRef.current = guesses
@@ -342,7 +336,14 @@ export default function Game() {
           winner_name: playerName,
           secrets: gameResult.secrets || [],
         })
-        setTimeout(() => setShowWinnerModal(true), 600)
+        setTimeout(() => setShowWinnerModal(true), 100)
+        return  // Don't toggle turn or clear digits - game is over
+      }
+      
+      // Immediately toggle turn to opponent to prevent guess box flashing
+      // The WS broadcast also triggers turn_changed, but this handles the timing gap
+      if (opponentIdRef.current) {
+        turnChanged(opponentIdRef.current)
       }
     } catch (err) {
       const errorMsg = err.response?.data?.detail || 'Failed to submit guess'

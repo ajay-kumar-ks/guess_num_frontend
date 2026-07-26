@@ -15,6 +15,10 @@ class WebSocketService {
 
   connect(roomCode, playerId) {
     if (this.isConnecting) return
+    
+    // Clean up old connection before creating a new one (prevents stale events from leaking)
+    this._cleanupConnection()
+    
     this.isConnecting = true
     this._roomCode = roomCode
     this._playerId = playerId
@@ -116,10 +120,44 @@ class WebSocketService {
   disconnect() {
     this._stopHeartbeat()
     this.reconnectAttempts = this.maxReconnectAttempts
+    this.isConnecting = false
+    this._roomCode = null
+    this._playerId = null
     if (this.ws) {
       this.ws.close(1000, 'User disconnected')
       this.ws = null
     }
+    this._emit('connection_status', 'disconnected')
+  }
+
+  _cleanupConnection() {
+    // Clean up the current connection without emitting events
+    this._stopHeartbeat()
+    this.isConnecting = false
+    if (this.ws) {
+      // Remove event handlers to prevent stale events from old connection from firing
+      this.ws.onopen = null
+      this.ws.onmessage = null
+      this.ws.onclose = null
+      this.ws.onerror = null
+      try {
+        if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+          this.ws.close(1001, 'Replacing connection')
+        }
+      } catch (e) {}
+      this.ws = null
+    }
+  }
+
+  forceDisconnect() {
+    // Full disconnect that ensures no reconnection + clears all listeners
+    this._stopHeartbeat()
+    this.reconnectAttempts = this.maxReconnectAttempts
+    this.maxReconnectAttempts = 0  // Prevent any further reconnect attempts
+    this.isConnecting = false
+    this._roomCode = null
+    this._playerId = null
+    this._cleanupConnection()
     this._emit('connection_status', 'disconnected')
   }
 

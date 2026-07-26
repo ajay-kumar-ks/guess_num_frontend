@@ -1,14 +1,23 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { useGame } from '../context/GameContext'
+import wsService from '../services/websocket'
 import { Plus, User, Loader2, AlertCircle } from 'lucide-react'
 import { getApiBaseUrl } from '../services/config'
 
 export default function CreateRoom() {
   const navigate = useNavigate()
+  const { resetGame } = useGame()
   const [playerName, setPlayerName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Reset game state and disconnect WS on mount to prevent stale data from previous game
+  useEffect(() => {
+    resetGame()
+    wsService.forceDisconnect()
+  }, [resetGame])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

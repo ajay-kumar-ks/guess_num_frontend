@@ -50,9 +50,10 @@ export const getGameState = async (roomCode) => {
   return response.data
 }
 
-// Get guess history
+// Get guess history (omit player_id param if null to avoid sending 'null' as string)
 export const getHistory = async (roomCode, playerId) => {
-  const response = await api.get(`/history?room_code=${roomCode}&player_id=${playerId}`)
+  const params = playerId ? `&player_id=${playerId}` : ''
+  const response = await api.get(`/history?room_code=${roomCode}${params}`)
   return response.data
 }
 
